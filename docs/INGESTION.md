@@ -16,7 +16,7 @@ Run from the repository root after installing `requirements.txt`:
 python tools/ingest_senator_records.py
 python tools/prepare_markdown_release.py \
   --release-id demo-md-r1 \
-  --collection sento_demo_md_r1_openai_te3small_1536 \
+  --collection sento_demo_md_fireworks_qwen3_8b_4096 \
   --output-dir data/releases/demo-md-r1
 ```
 
@@ -26,4 +26,4 @@ Source file changes require rebuilding the chunks and release package. The relea
 
 ## Publication
 
-Use the dry-run, apply, and health-check commands in [Qdrant setup](QDRANT_SETUP.md). Dry run validates the package without model or database calls. Apply sends the selected Markdown passages to OpenAI for embeddings and writes vectors and payloads to a new Qdrant collection. The hosted app only reads an already published collection with its read-only key.
+Use the dry-run, apply, and health-check commands in [Qdrant setup](QDRANT_SETUP.md). Dry run validates the package without model or database calls. Apply sends the selected Markdown passages to the configured embedding provider (Fireworks for the selected release) for embeddings and writes vectors and payloads to a new Qdrant collection. The hosted app only reads an already published collection with its read-only key.

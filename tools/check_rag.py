@@ -5,11 +5,11 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ai.rag_config import RAGConfig
+from ai.rag_config import RAGConfig, RAGConfigurationError
 from ai.rag_factory import build_retriever
 from ai.releases import validate_package, verify_collection, checksum, require
 from ai.vector_store import read_jsonl
-from tools.runtime_settings import load_settings
+from tools.runtime_settings import load_settings, read_settings
 
 
 def main():
@@ -17,15 +17,26 @@ def main():
     parser.add_argument('--release-manifest', type=Path)
     parser.add_argument('--chunks', type=Path)
     parser.add_argument('--secrets-file', type=Path)
+    parser.add_argument('--runtime-settings', action='store_true',
+                        help='Validate a private TOML export with the same rules and read-only key name as Streamlit Secrets.')
+    parser.add_argument('--config-only', action='store_true', help='Validate settings offline; make no database or model requests.')
     parser.add_argument('--connection-only', action='store_true', help='Check Qdrant authentication without a published release or model credentials.')
     args = parser.parse_args()
     try:
-        load_settings(args.secrets_file)
-        config = RAGConfig.load(require_credentials=False)
+        if args.runtime_settings:
+            require(args.secrets_file, '--runtime-settings requires an explicit private TOML file.')
+            config = RAGConfig.load(settings=read_settings(args.secrets_file), require_cloud=True,
+                                    require_credentials=args.config_only)
+        else:
+            load_settings(args.secrets_file)
+            config = RAGConfig.load(require_credentials=args.config_only)
         require(config.backend != 'local', 'Health check requires cloud mode.')
+        if args.config_only:
+            print(json.dumps({'status': 'configuration_ok', 'model_calls': 0, 'database_calls': 0,
+                              'note': 'Settings accepted; credentials, collection and model access are not authenticated.'}))
+            return 0
         if args.connection_only:
-            import os
-            require(config.backend == 'qdrant_cloud' and bool(os.environ.get('QDRANT_API_KEY')), 'Qdrant credentials are required.')
+            require(config.backend == 'qdrant_cloud' and bool(config.qdrant_api_key), 'Qdrant credentials are required.')
             client = config.cloud_client()
             try:
                 client.get_collections()
@@ -44,6 +55,9 @@ def main():
             verify_qdrant_collection(store.client, config.collection, rows)
         else:
             verify_collection(store.collection, rows)
+    except RAGConfigurationError as exc:
+        print(f'Configuration check failed: {exc}', file=sys.stderr)
+        return 2
     except Exception:
         print('Release health check failed. Check settings, connection and release identity privately; no model calls were made.', file=sys.stderr)
         return 2

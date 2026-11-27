@@ -17,9 +17,8 @@ def main() -> int:
     parser.add_argument('--source-root', type=Path, default=PROJECT_ROOT / 'data/senator_records')
     parser.add_argument('--release-id', required=True)
     parser.add_argument('--collection', required=True)
-    parser.add_argument('--embedding-provider', choices=['openai','fireworks'], default='fireworks')
-    parser.add_argument('--embedding-model', default='accounts/fireworks/models/qwen3-embedding-8b')
-    parser.add_argument('--embedding-dimensions', type=int, default=4096)
+    parser.add_argument('--embedding-provider', choices=('openai', 'fireworks', 'local_hash'), default='openai',
+                        help='Embedding identity for both publication and runtime; default: openai.')
     parser.add_argument('--subject', action='append', dest='subjects',
                         help='Optional senator ID filter; repeat to select more than one. Default: every Markdown subject.')
     parser.add_argument('--output-dir', type=Path, required=True)
@@ -29,7 +28,7 @@ def main() -> int:
             raise ValueError('Use a new, empty output directory; release packages are immutable.')
         chunks, manifest = prepare_markdown_release(
             read_jsonl([args.chunks]), args.release_id, args.collection, args.source_root, args.subjects,
-            args.embedding_provider, args.embedding_model, args.embedding_dimensions)
+            embedding_provider=args.embedding_provider)
         args.output_dir.mkdir(parents=True, exist_ok=True)
         chunk_output = args.output_dir / 'chunks.jsonl'
         manifest_output = args.output_dir / 'manifest.json'

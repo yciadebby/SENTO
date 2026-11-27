@@ -8,6 +8,10 @@ import re
 from urllib.parse import urlsplit
 
 
+class RAGConfigurationError(ValueError):
+    """Maintainer-safe validation message: never include supplied values or credentials."""
+
+
 @dataclass(frozen=True)
 class RAGConfig:
     backend: str
@@ -44,91 +48,98 @@ class RAGConfig:
         private TOML file. Secrets are kept on the config object with repr off.
         """
         if require_cloud and settings is None:
-            raise ValueError('The hosted SEN’TO chat runtime requires Streamlit Secrets.')
+            raise RAGConfigurationError('The hosted SEN’TO chat runtime requires Streamlit Secrets.')
         if settings is None:
             env = os.environ
             qdrant_api_key = env.get('QDRANT_API_KEY', '')
         else:
             if not isinstance(settings, Mapping):
-                raise ValueError('Streamlit Secrets must be a root-level TOML mapping.')
+                raise RAGConfigurationError('Streamlit Secrets must be a root-level TOML mapping.')
             env = {}
             for key, value in settings.items():
                 if not key.startswith(('SENTO_', 'QDRANT_', 'CHROMA_', 'OPENAI_', 'FIREWORKS_')):
                     continue
                 if not isinstance(value, (str, int, float, bool)):
-                    raise ValueError('Provider settings must be root-level scalar Streamlit Secrets.')
+                    raise RAGConfigurationError('Provider settings must be root-level scalar Streamlit Secrets.')
                 env[key] = str(value)
             # The public app intentionally accepts only the separately named
             # read-only key. It never reads the publisher's QDRANT_API_KEY.
             qdrant_api_key = env.get('SENTO_QDRANT_READ_ONLY_API_KEY', '')
         backend = env.get('SENTO_VECTOR_BACKEND', 'local')
         if backend not in {'local', 'chroma_cloud', 'qdrant_cloud'}:
-            raise ValueError('SENTO_VECTOR_BACKEND must be local, chroma_cloud or qdrant_cloud.')
+            raise RAGConfigurationError('SENTO_VECTOR_BACKEND must be local, chroma_cloud or qdrant_cloud.')
         if require_cloud and backend != 'qdrant_cloud':
-            raise ValueError('The hosted SEN’TO chat runtime requires Qdrant Cloud.')
+            raise RAGConfigurationError('The hosted SEN’TO chat runtime requires Qdrant Cloud.')
         cloud = backend != 'local'
         qdrant = backend == 'qdrant_cloud'
         collection_key = 'SENTO_QDRANT_COLLECTION' if qdrant else 'SENTO_CHROMA_COLLECTION'
         provider = env.get('SENTO_EMBEDDING_PROVIDER', 'openai' if cloud else 'ollama')
-        if provider not in {'openai', 'ollama', 'local_hash', 'fireworks'}:
-            raise ValueError('SENTO_EMBEDDING_PROVIDER must be openai, fireworks, local_hash or ollama.')
+        if provider not in {'openai', 'fireworks', 'ollama', 'local_hash'}:
+            raise RAGConfigurationError('SENTO_EMBEDDING_PROVIDER must be openai, fireworks, local_hash or ollama.')
         default_model = (
             'text-embedding-3-small'
             if provider == 'openai'
-            else ('accounts/fireworks/models/qwen3-embedding-8b' if provider == 'fireworks' else ('sento-hash-ngram-v1' if provider == 'local_hash' else env.get('SENTO_OLLAMA_EMBED_MODEL', 'embeddinggemma')))
+            else ('sento-hash-ngram-v1' if provider == 'local_hash' else env.get('SENTO_OLLAMA_EMBED_MODEL', 'embeddinggemma'))
         )
+        if provider == 'fireworks':
+            default_model = 'accounts/fireworks/models/qwen3-embedding-8b'
         model = env.get('SENTO_EMBEDDING_MODEL', default_model)
+        default_dimensions = '4096' if provider == 'fireworks' else ('1536' if provider in {'openai', 'local_hash'} else '0')
         try:
-            dimensions = int(env.get('SENTO_EMBEDDING_DIMENSIONS', '1536' if provider in {'openai', 'local_hash'} else '4096' if provider == 'fireworks' else '0'))
+            dimensions = int(env.get('SENTO_EMBEDDING_DIMENSIONS', default_dimensions))
             top_k = int(env.get('SENTO_RETRIEVAL_TOP_K', '5'))
             distance = float(env.get('SENTO_MAX_COSINE_DISTANCE', '.65'))
             global_request_limit = int(env.get('SENTO_GLOBAL_REQUEST_LIMIT', '30'))
             global_request_window = float(env.get('SENTO_GLOBAL_REQUEST_WINDOW_SECONDS', '60'))
         except ValueError:
-            raise ValueError('Embedding, retrieval and request-limit settings must be numeric.') from None
+            raise RAGConfigurationError('Embedding, retrieval and request-limit settings must be numeric.') from None
         if not 1 <= top_k <= 5 or not math.isfinite(distance) or not 0 <= distance <= 2:
-            raise ValueError('Top K must be 1–5 and cosine distance must be 0–2.')
+            raise RAGConfigurationError('Top K must be 1–5 and cosine distance must be 0–2.')
         if not 1 <= global_request_limit <= 1000 or not math.isfinite(global_request_window) or not 1 <= global_request_window <= 3600:
-            raise ValueError('The shared request limit must be 1–1000 and its window 1–3600 seconds.')
+            raise RAGConfigurationError('The shared request limit must be 1–1000 and its window 1–3600 seconds.')
         if provider == 'openai' and (model != 'text-embedding-3-small' or dimensions != 1536):
-            raise ValueError('This release requires text-embedding-3-small with 1536 dimensions.')
+            raise RAGConfigurationError('This release requires text-embedding-3-small with 1536 dimensions.')
         if provider == 'local_hash' and (model != 'sento-hash-ngram-v1' or dimensions != 1536):
-            raise ValueError('local_hash embeddings require sento-hash-ngram-v1 with 1536 dimensions.')
-        embedding_url = env.get('SENTO_EMBEDDING_BASE_URL', 'https://api.fireworks.ai/inference/v1' if provider == 'fireworks' else 'https://api.openai.com/v1')
+            raise RAGConfigurationError('local_hash embeddings require sento-hash-ngram-v1 with 1536 dimensions.')
+        if provider == 'fireworks' and (model != 'accounts/fireworks/models/qwen3-embedding-8b' or dimensions != 4096):
+            raise RAGConfigurationError('Fireworks embeddings require accounts/fireworks/models/qwen3-embedding-8b with 4096 dimensions.')
+        default_embedding_url = 'https://api.fireworks.ai/inference/v1' if provider == 'fireworks' else 'https://api.openai.com/v1'
+        embedding_url = env.get('SENTO_EMBEDDING_BASE_URL', default_embedding_url)
         openai_base_url = env.get('OPENAI_BASE_URL', 'https://api.openai.com/v1')
         if provider in {'openai', 'fireworks'}:
             parsed = urlsplit(embedding_url)
             if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
-                raise ValueError('Hosted embeddings require an explicit HTTPS base URL without credentials or query parameters.')
+                raise RAGConfigurationError('Hosted embeddings require an explicit HTTPS base URL without credentials or query parameters.')
         parsed_generation_url = urlsplit(openai_base_url)
         if (parsed_generation_url.scheme != 'https' or not parsed_generation_url.hostname
                 or parsed_generation_url.username or parsed_generation_url.password
                 or parsed_generation_url.query or parsed_generation_url.fragment):
-            raise ValueError('OpenAI generation requires an HTTPS base URL without credentials or query parameters.')
+            raise RAGConfigurationError('OpenAI generation requires an HTTPS base URL without credentials or query parameters.')
         generator_provider = env.get('SENTO_GENERATOR_PROVIDER', 'ollama').strip().casefold()
         if generator_provider not in {'openai', 'ollama'}:
-            raise ValueError("SENTO_GENERATOR_PROVIDER must be 'ollama' or 'openai'.")
+            raise RAGConfigurationError("SENTO_GENERATOR_PROVIDER must be 'ollama' or 'openai'.")
         openai_model = env.get('SENTO_OPENAI_MODEL', 'gpt-6-luna').strip()
         reasoning_effort = env.get('SENTO_OPENAI_REASONING_EFFORT', 'low').strip().casefold()
         if not openai_model:
-            raise ValueError('SENTO_OPENAI_MODEL must name a generation model.')
+            raise RAGConfigurationError('SENTO_OPENAI_MODEL must name a generation model.')
         if reasoning_effort not in {'none', 'low', 'medium', 'high', 'xhigh', 'max'}:
-            raise ValueError('SENTO_OPENAI_REASONING_EFFORT is not supported.')
+            raise RAGConfigurationError('SENTO_OPENAI_REASONING_EFFORT is not supported.')
         if cloud:
             required = [collection_key, 'SENTO_RELEASE_ID']
             required += ['SENTO_QDRANT_URL'] if qdrant else ['CHROMA_TENANT', 'CHROMA_DATABASE']
             if require_credentials:
                 qdrant_credential = ('SENTO_QDRANT_READ_ONLY_API_KEY' if settings is not None
                                      else 'QDRANT_API_KEY')
-                required += [qdrant_credential if qdrant else 'CHROMA_API_KEY']
-                required += ['FIREWORKS_API_KEY' if provider == 'fireworks' else 'OPENAI_API_KEY']
-                if generator_provider == 'openai': required += ['OPENAI_API_KEY']
-            if any(not env.get(key, '').strip() for key in required):
-                raise ValueError('Cloud configuration is incomplete. Check collection, release, connection settings and private credentials.')
+                required += [qdrant_credential if qdrant else 'CHROMA_API_KEY', 'OPENAI_API_KEY']
+                if provider == 'fireworks':
+                    required.append('FIREWORKS_API_KEY')
+            missing = [key for key in required if not env.get(key, '').strip()]
+            if missing:
+                raise RAGConfigurationError('Cloud configuration is incomplete. Missing settings: ' + ', '.join(missing) + '.')
             if provider not in {'openai', 'fireworks', 'local_hash'} or generator_provider != 'openai':
-                raise ValueError('Cloud mode requires hosted embeddings and OpenAI generation; no local fallback is allowed.')
+                raise RAGConfigurationError('Cloud mode requires hosted OpenAI generation and non-Ollama embeddings; no local fallback is allowed.')
             if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_-]{1,125}[a-zA-Z0-9]', env[collection_key]):
-                raise ValueError('Invalid cloud collection name.')
+                raise RAGConfigurationError('Invalid cloud collection name.')
         qdrant_url = env.get('SENTO_QDRANT_URL', '').rstrip('/')
         if qdrant:
             try:
@@ -138,7 +149,7 @@ class RAGConfig:
             except ValueError:
                 safe = False
             if not safe:
-                raise ValueError('SENTO_QDRANT_URL must be an HTTPS endpoint without credentials, path or query.')
+                raise RAGConfigurationError('SENTO_QDRANT_URL must be an HTTPS endpoint without credentials, path or query.')
         return cls(
             backend=backend,
             collection=env.get(collection_key, ''),
@@ -171,11 +182,11 @@ class RAGConfig:
         if self.embedding_provider == 'openai':
             return OpenAIEmbeddingProvider(api_key=self.openai_api_key, base_url=self.embedding_base_url,
                                            model=self.embedding_model, dimensions=self.dimensions)
-        if self.embedding_provider == 'local_hash':
-            return LocalHashEmbeddingProvider(model=self.embedding_model, dimensions=self.dimensions)
         if self.embedding_provider == 'fireworks':
             return FireworksEmbeddingProvider(api_key=self.fireworks_api_key, base_url=self.embedding_base_url,
-                                               model=self.embedding_model, dimensions=self.dimensions)
+                                             model=self.embedding_model, dimensions=self.dimensions)
+        if self.embedding_provider == 'local_hash':
+            return LocalHashEmbeddingProvider(model=self.embedding_model, dimensions=self.dimensions)
         return OllamaEmbeddingProvider(model=self.embedding_model)
 
     def cloud_client(self):

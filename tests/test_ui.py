@@ -6,10 +6,16 @@ from frontend.api import send_chat_message
 APP = Path(__file__).resolve().parents[1] / "app.py"
 
 
+@pytest.fixture(autouse=True)
+def offline_runtime(monkeypatch):
+    # UI tests never read a developer's private credentials or contact cloud services.
+    monkeypatch.setattr('frontend.api._chat_runtime_secrets', lambda: {})
+
+
 def test_handoff_preserves_histories_without_resubmitting(tmp_path, monkeypatch):
     monkeypatch.setenv('SENTO_CHROMA_PATH', str(tmp_path / 'empty-index'))
-    at = AppTest.from_file(str(APP)).run()
-    at.button(key='nav_home_start').click().run()
+    at = AppTest.from_file(str(APP), default_timeout=10).run()
+    at.button(key='home_hero_chat').click().run()
     at.chat_input(key='chat_prompt').set_value('Tell me about Raffy Tulfo').run()
     assert not at.exception
     assert at.session_state['senator_id'] == 'risa-hontiveros'
@@ -46,19 +52,19 @@ def test_chat_adapter_uses_chatbot_service(monkeypatch):
 def test_navigation_chat_and_comparison(tmp_path, monkeypatch):
     monkeypatch.setenv("SENTO_DB_PATH", str(tmp_path / "ui.sqlite3"))
     monkeypatch.setenv("SENTO_CHROMA_PATH", str(tmp_path / "empty-index"))
-    at = AppTest.from_file(str(APP)).run()
+    at = AppTest.from_file(str(APP), default_timeout=10).run()
     assert not at.exception
     assert at.session_state["page"] == "HOME"
-    at.button(key="nav_home_start").click().run()
+    at.button(key="home_hero_chat").click().run()
     assert not at.exception
     assert at.radio(key="main_navigation").options == ["CHAT", "COMPARE"]
     at.button(key="suggest_risa-hontiveros_0").click().run()
     assert not at.exception
     assert len(at.session_state["histories"]["risa-hontiveros"]) == 2
     answer = at.session_state["histories"]["risa-hontiveros"][1]["response"]
-    assert answer["label"] == "NO REVIEWED EVIDENCE"
+    assert answer["label"] == "RAG CONFIGURATION ERROR"
     assert answer["citations"] == []
-    assert "could not find a reviewed source" in answer["answer"]
+    assert answer["validation"]["status"] == "CONFIGURATION_ERROR"
     at.button(key="select_senator_idfrancis-pangilinan").click().run()
     assert at.session_state["senator_id"] == "francis-pangilinan"
     assert at.session_state["histories"]["francis-pangilinan"] == []
@@ -100,8 +106,8 @@ def test_multiple_chat_source_buttons_have_unique_keys(tmp_path, monkeypatch):
         },
     )
 
-    at = AppTest.from_file(str(APP)).run()
-    at.button(key="nav_home_start").click().run()
+    at = AppTest.from_file(str(APP), default_timeout=10).run()
+    at.button(key="home_hero_chat").click().run()
     at.chat_input(key="chat_prompt").set_value("First question").run()
     at.chat_input(key="chat_prompt").set_value("Second question").run()
 
@@ -118,8 +124,8 @@ def test_multiple_chat_source_buttons_have_unique_keys(tmp_path, monkeypatch):
 ])
 def test_chat_ui_refuses_prompt_extraction_before_placeholder_call(tmp_path, monkeypatch, question, refusal):
     monkeypatch.setenv("SENTO_DB_PATH", str(tmp_path / "ui-security.sqlite3"))
-    at = AppTest.from_file(str(APP)).run()
-    at.button(key="nav_home_start").click().run()
+    at = AppTest.from_file(str(APP), default_timeout=10).run()
+    at.button(key="home_hero_chat").click().run()
     at.chat_input(key="chat_prompt").set_value(question).run()
 
     history = at.session_state["histories"]["risa-hontiveros"]

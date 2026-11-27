@@ -153,7 +153,8 @@ def reviewed(tmp_path, cloud):
         source.write_text('Reviewed local fixture', encoding='utf-8')
         digest = hashlib.sha256(source.read_bytes()).hexdigest()
         record = {**chunk(senator, 'Education record', [senator]), 'senator_id': senator,
-                  'source_file': source.name, 'source_sha256': digest, 'claim_id': f'CLM-{senator}', 'extraction_version': 'test-1'}
+                  'source_file': source.name, 'source_mime_type': 'text/markdown',
+                  'source_sha256': digest, 'claim_id': f'CLM-{senator}', 'extraction_version': 'test-1'}
         chunks.append(record)
         decisions.append({'senator_id': senator, 'claim_id': record['claim_id'], 'decision': 'approved',
             'reviewer': 'Test reviewer (synthetic)', 'reviewed_at': '2026-11-26', 'source_sha256': digest,

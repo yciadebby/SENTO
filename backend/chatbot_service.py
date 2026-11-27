@@ -1,7 +1,9 @@
 from collections.abc import Callable
+import logging
 
 from backend.senator_service import SenatorService
 from ai.rag_factory import build_default_pipeline
+from ai.rag_config import RAGConfigurationError
 from backend.chat_scope import scope_response
 from backend.security import normalize_question, requests_internal_prompt, requests_bulk_retrieval
 from backend.policies import policy_violation
@@ -16,9 +18,13 @@ class ChatbotService:
                 settings=settings,
                 require_cloud=require_cloud,
             )
-        except ValueError:
+        except ValueError as exc:
             self.pipeline = None
             self.configuration_error = True
+            # Only our controlled validation messages are safe for deployment logs.
+            # Never log arbitrary provider exceptions or the supplied settings.
+            detail = str(exc) if isinstance(exc, RAGConfigurationError) else 'Pipeline configuration could not be initialized.'
+            logging.getLogger(__name__).warning('SENTO configuration error: %s', detail)
 
     def ask(self, question, senator_id, congress_id=None, progress_callback: Callable[[str], None] | None = None):
         question = normalize_question(question)

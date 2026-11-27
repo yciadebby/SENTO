@@ -215,9 +215,9 @@ def test_insufficient_evidence_abstention_matches_tagalog_input():
     )
 
     assert response["validation"]["status"] == "INSUFFICIENT_EVIDENCE"
-    assert response["answer"].startswith("Wala akong nakitang nasuring source")
+    assert response["answer"].startswith("Wala akong nakitang passage sa project-curated notes")
     assert "Hindi ito nangangahulugang walang pampublikong rekord" in response["answer"]
-    assert "nasuring passage" in response["limitation"]
+    assert "project-curated corpus" in response["limitation"]
 
 
 def test_bulk_retrieval_extraction_request_is_refused():

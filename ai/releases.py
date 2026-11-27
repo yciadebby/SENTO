@@ -107,8 +107,6 @@ def prepare_markdown_release(
     source_root,
     subjects=None,
     embedding_provider='openai',
-    embedding_model=None,
-    embedding_dimensions=1536,
 ):
     """Build a package from every section in the project's curated Markdown corpus.
 
@@ -153,7 +151,13 @@ def prepare_markdown_release(
     counts = dict(Counter(r['senator_id'] for r in rows))
     require(counts and (not requested or set(counts) == requested), 'Selected subjects need Markdown content.')
     preflight_rows(rows)
-    embedding_model = embedding_model or ('sento-hash-ngram-v1' if embedding_provider == 'local_hash' else 'accounts/fireworks/models/qwen3-embedding-8b' if embedding_provider == 'fireworks' else 'text-embedding-3-small')
+    embedding_profiles = {
+        'openai': ('text-embedding-3-small', 1536),
+        'local_hash': ('sento-hash-ngram-v1', 1536),
+        'fireworks': ('accounts/fireworks/models/qwen3-embedding-8b', 4096),
+    }
+    require(embedding_provider in embedding_profiles, 'Unsupported release embedding provider.')
+    embedding_model, embedding_dimensions = embedding_profiles[embedding_provider]
     manifest = {
         'release_id': release_id,
         'collection': collection,

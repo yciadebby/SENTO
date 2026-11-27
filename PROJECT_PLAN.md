@@ -1,6 +1,6 @@
 # SEN’TO Project Continuation Plan
 
-**Planning baseline:** 24 November 2026; deployment update 26 November 2026
+**Planning baseline:** 24 November 2026; deployment update 27 November 2026
 **Product direction:** Turn the visual demo into a small, source-backed civic information project while keeping its scope manageable.
 
 ## 1. Goal
@@ -13,7 +13,7 @@ The next release should be a **limited real project**, not a claim that the enti
 
 - A Python 3.12 deployment target with Home, Chat and Compare.
 - Twenty-four dated directory entries and research profiles. These do not establish current membership, bloc affiliation or verified profile facts.
-- `data/mock_documents.json` remains a legacy fixture and is not evidence. The Chat frontend adapter calls the RAG pipeline, provider adapters, and citation checks. No project-curated Markdown collection has been published to Qdrant, so hosted factual requests cannot retrieve evidence yet.
+- `data/mock_documents.json` remains a legacy fixture and is not evidence. The Chat frontend adapter calls the RAG pipeline, provider adapters, and citation checks. The Fireworks r3 collection is published with 968 evidence rows; hosted requests require matching runtime settings.
 - The active Chat ingestion path maps every senator Markdown file to the app directory and chunks every body section, retaining claim statuses and available `SRC-*` metadata. The separate Compare parser continues to use its existing `VERIFIED`-claim display rules.
 - Chat ingestion now includes every Markdown file, including the Chiz Escudero profile, and every body section. Compare continues to read claim-based profiles and display provenance-complete `VERIFIED` claims across shared categories, with source links and explicit gaps.
 - No authentication or account creation. The guest display-name control and unused state have been removed. Chat history is held in Streamlit session state.
@@ -32,9 +32,11 @@ This is a project curation decision, not an independent fact-check by software. 
 
 ### Deployment implementation update
 
-Cloud configuration, hosted embeddings, read-only Qdrant runtime, normalized Congress filtering, explicit subject handoffs, citation mappings, session-local answer caching, release export/publication and read-only health tools are implemented locally. The hosted Chat adapter reads root-level Streamlit Secrets, requires Qdrant Cloud and OpenAI, and has no local/Ollama fallback. It also limits requests to eight per session and thirty per app process per rolling minute. Release publication, model-account verification, live evaluation, hosting promotion and laptop-off acceptance remain open. See [deployment status](docs/DEPLOYMENT_STATUS.md) and [setup](docs/RAG_SETUP.md).
+**Fireworks compatibility repair — 27 November 2026:** The owner selected Fireworks `accounts/fireworks/models/qwen3-embedding-8b` / 4,096 for embeddings while retaining OpenAI-compatible gateway generation. Runtime Secrets now forward `FIREWORKS_API_KEY` separately; the public app still requires `SENTO_QDRANT_READ_ONLY_API_KEY`. The embedding adapter uses the existing OpenAI-compatible client with bounded requests and response validation. The Markdown release CLI accepts `--embedding-provider fireworks` and records matching metadata. Existing OpenAI/local-hash releases retain their original identities. Queries and publication passages go to the selected embedding provider; question/evidence generation goes to the owner-supplied OpenAI-compatible gateway. Controlled configuration errors appear in maintainer logs without supplied values. The health tool can validate an explicit private runtime-settings export offline. Subsequent live checks found r1 incomplete (224/968 rows), recovered all 968 rows into r3, and verified Fireworks embeddings, gateway generation and a cited answer. Streamlit deployment, the app read-only key and broader answer-quality review remain open. The supplied gateway key returns HTTP 401 at api.openai.com and succeeds at https://aiki-labs.up.railway.app/api/v1.
 
-The owner subsequently selected Qdrant Cloud because Chroma signups were unavailable, created `sento-demo` and separate manage/read keys, and supplied its HTTPS endpoint. Qdrant runtime, create-only publication and health-check support are implemented. See [Qdrant setup](docs/QDRANT_SETUP.md). Account creation is complete per the dashboard screenshot; release publication and deployment are still pending.
+Cloud configuration, hosted embeddings, read-only Qdrant runtime, normalized Congress filtering, explicit subject handoffs, citation mappings, session-local answer caching, release export/publication and read-only health tools are implemented locally. The hosted Chat adapter reads root-level Streamlit Secrets, requires Qdrant Cloud, Fireworks embeddings and OpenAI-compatible gateway generation for the selected configuration, and has no local/Ollama fallback. It also limits requests to eight per session and thirty per app process per rolling minute. One live retrieval/generation/citation smoke test has passed; wider answer-quality evaluation, hosting promotion and laptop-off acceptance remain open. See [deployment status](docs/DEPLOYMENT_STATUS.md) and [setup](docs/RAG_SETUP.md).
+
+The owner subsequently selected Qdrant Cloud because Chroma signups were unavailable, created `sento-demo` and separate manage/read keys, and supplied its HTTPS endpoint. Qdrant runtime, create-only publication and health-check support are implemented. See [Qdrant setup](docs/QDRANT_SETUP.md). Account creation is complete per the dashboard screenshot; the Fireworks r3 release has now been published; Streamlit code/Secrets deployment is still pending.
 
 ### Product boundaries
 
@@ -79,12 +81,12 @@ The owner subsequently selected Qdrant Cloud because Chroma signups were unavail
 
 ### Phase 3 — Replace simulated answers with evidence-grounded responses
 
-**Implementation status:** The Chat UI calls the ingestion/index/retrieval/generation/citation-validation path through the frontend adapter. An offline Markdown package with 968 chunks across 24 subjects is prepared and marked project-curated; it has not been published to Qdrant. Factual requests abstain until evidence is indexed. The previous mock pipeline remains as legacy code and is not used by the Chat UI.
+**Implementation status:** The Chat UI calls the ingestion/index/retrieval/generation/citation-validation path through the frontend adapter. An offline Markdown package with 968 chunks across 24 subjects is prepared and marked project-curated; the Fireworks r3 version has been published and checked in Qdrant. Factual requests abstain until evidence is indexed. The previous mock pipeline remains as legacy code and is not used by the Chat UI.
 
-1. The hosted Chat runtime uses OpenAI query embeddings and generation with Qdrant Cloud vector search. It reads its settings from Streamlit Secrets and requires a Qdrant read-only key. Local Chroma/Ollama adapters remain available to maintenance tooling; the deployed path has no local fallback.
+1. The hosted Chat runtime uses Fireworks Qwen3 query embeddings and OpenAI-compatible gateway generation with Qdrant Cloud vector search. It reads its settings from Streamlit Secrets and requires a Qdrant read-only key. Local Chroma/Ollama adapters remain available to maintenance tooling; the deployed path has no local fallback.
 2. Retrieval filters for the selected senator and verified sources, supports an optional period filter, and applies a configurable cosine-distance cutoff. The pipeline checks subject isolation again before generation.
 3. The generator receives only selected-subject passages. Its instructions require third-person attribution, neutrality, per-fact evidence markers, and treating retrieved text as untrusted data.
-4. The OpenAI Responses adapter currently targets `gpt-6-luna` with low reasoning. Access for the owner's API account has not been verified; keep this target until that check is completed, and do not switch models without reporting a failure first. The Responses request sets `store=false`. Review the data-flow notes in `docs/RAG_SETUP.md` before sending records to a hosted model.
+4. The configured `gpt-6-luna` model passed a live request through the owner-supplied gateway. That path uses Chat Completions; it does not send the Responses reasoning-effort setting or a store flag. Direct OpenAI configurations use Responses with `store=false`. Keep the key and its issuing provider endpoint paired. Review the data-flow notes in `docs/RAG_SETUP.md` before sending records to a hosted model.
 5. Citation validation confirms each marker refers to retrieved evidence with verified source metadata and an HTTPS URL. It is a mechanical integrity check, not proof that each statement is entailed by the source. The UI shows citation metadata and locators when provided and distinguishes no-evidence, policy-limit, validation-failure, and service-unavailable responses.
 6. No retrieved evidence means an explicit abstention; there is no fallback to the old demo corpus. Show index/evidence status in the UI before treating Phase 3 as complete.
 

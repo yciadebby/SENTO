@@ -25,13 +25,9 @@ class EmbeddingProvider(Protocol):
     def embed(self, texts: list[str]) -> list[list[float]]: ...
 
 
-class OpenAIEmbeddingProvider:
+class HostedEmbeddingProvider:
     """Explicit hosted embeddings, with bounded requests and strict response validation."""
-    provider_name = "openai"
-
-    def __init__(self, *, api_key, base_url, model="text-embedding-3-small", dimensions=1536, client=None):
-        if model != "text-embedding-3-small" or dimensions != 1536:
-            raise ValueError("Hosted embeddings require text-embedding-3-small / 1536.")
+    def __init__(self, *, api_key, base_url, model, dimensions, client=None):
         self._model, self.dimensions = model, dimensions
         self.client = client
         self._client_lock = RLock()
@@ -70,44 +66,26 @@ class OpenAIEmbeddingProvider:
             raise EmbeddingError("The hosted embedding service is unavailable.") from None
 
 
-class FireworksEmbeddingProvider(OpenAIEmbeddingProvider):
-    """Fireworks OpenAI-compatible embeddings with an independent credential."""
+class OpenAIEmbeddingProvider(HostedEmbeddingProvider):
+    provider_name = "openai"
+
+    def __init__(self, *, api_key, base_url, model="text-embedding-3-small", dimensions=1536, client=None):
+        if model != "text-embedding-3-small" or dimensions != 1536:
+            raise ValueError("Hosted embeddings require text-embedding-3-small / 1536.")
+        super().__init__(api_key=api_key, base_url=base_url, model=model, dimensions=dimensions, client=client)
+
+
+class FireworksEmbeddingProvider(HostedEmbeddingProvider):
+    """Qwen3 embeddings using the existing OpenAI-compatible client, with a separate key."""
     provider_name = "fireworks"
+    MODEL = "accounts/fireworks/models/qwen3-embedding-8b"
+    DIMENSIONS = 4096
+    BASE_URL = "https://api.fireworks.ai/inference/v1"
 
-    def __init__(self, *, api_key, base_url="https://api.fireworks.ai/inference/v1",
-                 model="accounts/fireworks/models/qwen3-embedding-0p6b", dimensions=1024, client=None):
-        if not api_key and client is None:
-            raise ValueError("FIREWORKS_API_KEY is required for Fireworks embeddings.")
-        self._model, self.dimensions = model, dimensions
-        self.client = client
-        self._client_lock = RLock()
-        self._api_key, self.base_url = api_key, base_url
-
-    def embed(self, texts):
-        if not texts:
-            return []
-        if any(not isinstance(text, str) or not text.strip() for text in texts):
-            raise EmbeddingError("Embedding inputs must be nonempty strings.")
-        try:
-            with self._client_lock:
-                if self.client is None:
-                    from openai import OpenAI
-                    self.client = OpenAI(api_key=self._api_key, base_url=self.base_url, timeout=45, max_retries=0)
-            response = self.client.embeddings.create(model=self.model_name, input=texts)
-            rows = response.data
-            if len(rows) != len(texts) or sorted(row.index for row in rows) != list(range(len(texts))):
-                raise EmbeddingError("Unexpected embedding count or indexes.")
-            vectors = []
-            for row in sorted(rows, key=lambda row: row.index):
-                vector = row.embedding
-                if len(vector) != self.dimensions or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in vector):
-                    raise EmbeddingError("Malformed embedding dimensions or numeric values.")
-                vectors.append([float(v) for v in vector])
-            return vectors
-        except EmbeddingError:
-            raise
-        except Exception:
-            raise EmbeddingError("The Fireworks embedding service is unavailable.") from None
+    def __init__(self, *, api_key, base_url=BASE_URL, model=MODEL, dimensions=DIMENSIONS, client=None):
+        if model != self.MODEL or dimensions != self.DIMENSIONS:
+            raise ValueError("Fireworks embeddings require accounts/fireworks/models/qwen3-embedding-8b / 4096.")
+        super().__init__(api_key=api_key, base_url=base_url, model=model, dimensions=dimensions, client=client)
 
 
 class OllamaEmbeddingProvider:
