@@ -209,6 +209,33 @@ def _category_cell(record, category_key):
     )
 
 
+def _comparison_sources_html(records):
+    seen = set()
+    cards = []
+    index = 0
+    for record in records:
+        for section in record["sections"].values():
+            for claim in section["claims"]:
+                for source in claim.get("sources", []):
+                    source_id = source.get("source_id")
+                    if not source_id or source_id in seen:
+                        continue
+                    seen.add(source_id)
+                    index += 1
+                    cards.append(
+                        f'<article class="source-detail-card"><h4>{escape(str(record["senator"]["name"]))} · '
+                        f'{escape(str(source.get("title") or "Source title unavailable"))}</h4>'
+                        f'<p>{escape(str(source.get("issuing_body") or "Issuing body unavailable"))} · '
+                        f'{escape(str(source.get("publication_date") or "publication date unavailable"))} · '
+                        f'{escape(str(source.get("relevant_period") or claim.get("period") or "Period not stated"))}</p>'
+                        f'<p class="source-detail-meta">Locator: {escape(str(source.get("locator") or "not stated"))}</p>'
+                        f'{_source_link(source, index)}</article>'
+                    )
+    if not cards:
+        cards.append('<p class="comparison-gap">No source-complete references are available for this comparison.</p>')
+    return '<section class="comparison-section comparison-sources" id="compare-sources"><h3>Sources</h3>' + ''.join(cards) + '</section>'
+
+
 @st.dialog("Sources used in this comparison", width="large")
 def _comparison_sources(records):
     st.caption("Sources below support the displayed comparison records. Verification status, issuing body, and locator are shown for each reference.")
@@ -275,12 +302,12 @@ def render(service):
                     "performance": "Performance",
                 }
                 nav_items = [(key, nav_labels[key]) for key in COMPARISON_CATEGORIES]
-                source_link = '<a href="?view=compare&amp;sources=1" target="_self">Sources</a>'
                 st.html(
                     '<nav class="compare-links" aria-label="Comparison sections">'
-                    + "".join(f'<a href="?view=compare#compare-{key}" target="_self">{escape(label)}</a>' for key, label in nav_items)
-                    + source_link
-                    + "</nav>"
+                    + "".join(f'<a href="#compare-{key}" data-compare-scroll="true">{escape(label)}</a>' for key, label in nav_items)
+                    + '<a href="#compare-sources" data-compare-scroll="true">Sources</a></nav>'
+                    + '<script>if(!window.__compareScrollBound){window.__compareScrollBound=true;document.addEventListener("click",function(event){const link=event.target.closest(".compare-links a[data-compare-scroll]");if(!link)return;const target=document.querySelector(link.getAttribute("href"));if(!target)return;event.preventDefault();target.scrollIntoView({behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"start"});});}</script>',
+                    unsafe_allow_javascript=True,
                 )
             with note:
                 st.html('<p class="compare-note">No rankings or endorsements · gaps stay visible</p>')
@@ -350,5 +377,5 @@ def render(service):
             f'<div class="comparison-scroll" role="region" aria-label="Side-by-side senator records" tabindex="0" style="--count:{count}">'
             '<div class="compare-data-note">All documented claims from each senator’s research file are shown, ranked with VERIFIED records first. '
             'Each entry keeps its original classification label; missing data does not mean no record exists.</div>'
-            + f'<div class="comparison-grid comparison-portraits">{people}</div>{"".join(rows)}</div>'
+            + f'<div class="comparison-grid comparison-portraits">{people}</div>{"".join(rows)}{_comparison_sources_html(records)}</div>'
         )
