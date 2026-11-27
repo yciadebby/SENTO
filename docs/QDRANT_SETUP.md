@@ -8,7 +8,7 @@ Endpoint: `https://d9b16d6d-d989-4240-9c8c-cecffb5f36e1.ap-northeast-2-0.aws.clo
 
 The hosted chatbot reads its RAG configuration directly from root-level values in the deployed app's Streamlit Settings → Secrets. It does not read `.env`, local TOML files, or process environment variables for chatbot settings. Use [the settings template](qdrant.secrets.example.toml) as a checklist, not as a runtime file. Paste the non-secret settings there and enter credentials directly in Streamlit Secrets.
 
-Set `SENTO_QDRANT_READ_ONLY_API_KEY` to the full `sento-app` read-only key and `OPENAI_API_KEY` to the OpenAI project key. Do not put the `sento-publisher` manage key or `QDRANT_API_KEY` in app Secrets. The app passes only the separately named read-only secret to the Qdrant client; confirm the key's Read Cluster role in the Qdrant dashboard. Keep the publisher key in the maintainer's separate publishing environment.
+Set `SENTO_QDRANT_READ_ONLY_API_KEY` to the full `sento-app` read-only key, `OPENAI_API_KEY` to the OpenAI project key for chat generation, and `FIREWORKS_API_KEY` for embeddings. Do not put the `sento-publisher` manage key or `QDRANT_API_KEY` in app Secrets. The app passes only the separately named read-only secret to the Qdrant client; confirm the key's Read Cluster role in the Qdrant dashboard. Keep the publisher key in the maintainer's separate publishing environment.
 
 Leave `SENTO_QDRANT_COLLECTION` and `SENTO_RELEASE_ID` unset until a project-curated Markdown release has been published and checked. Missing cloud settings fail closed; the chat runtime cannot switch to local Chroma or Ollama.
 
@@ -27,7 +27,7 @@ The package is created under `data/releases/demo-md-r1/`; use a new release ID, 
 
 ## Publish using the maintenance key
 
-For the maintainer workflow, create a separate ignored publisher settings file. Enter the `sento-publisher` manage key as `QDRANT_API_KEY` and an OpenAI credential as `OPENAI_API_KEY`. Add `SENTO_ACTIVE_COLLECTION = "NONE"` for the first publication; for future releases use the actual serving collection name. Set the candidate collection/release to the manifest's matching values. Keep this publisher file out of Streamlit Secrets; the app uses only `SENTO_QDRANT_READ_ONLY_API_KEY`.
+For the maintainer workflow, create a separate ignored publisher settings file. Enter the `sento-publisher` manage key as `QDRANT_API_KEY` and `FIREWORKS_API_KEY` for embeddings. Add `SENTO_ACTIVE_COLLECTION = "NONE"` for the first publication; for future releases use the actual serving collection name. Set the candidate collection/release to the manifest's matching values. Keep this publisher file out of Streamlit Secrets; the app uses only `SENTO_QDRANT_READ_ONLY_API_KEY`.
 
 ```powershell
 .\.venv\Scripts\python.exe tools/index_corpus.py --secrets-file .streamlit/secrets.publisher.toml --chunks data/releases/demo-md-r1/chunks.jsonl --release-manifest data/releases/demo-md-r1/manifest.json --dry-run
@@ -39,7 +39,7 @@ Dry run is offline and does not require model or database credentials. Apply sen
 
 ## Storage and retrieval contract
 
-- One cosine collection per release, using 1,536-dimensional `text-embedding-3-small` vectors supplied by the application. Qdrant inference is not used.
+- One cosine collection per release, using vectors from the model and dimensions recorded in that release's manifest. Qdrant inference is not used; never mix models in one collection.
 - Deterministic UUIDs map the existing `chunk_id::senator_id` row IDs to Qdrant points. Original IDs remain in each payload, along with complete text, citation sources, raw periods and normalized Congress.
 - Keyword indexes are created before upload for `record_kind`, `senator_id`, `curation_status`, `congress_id`, `relevant_period`, and `release_id`. Original claim evidence statuses are preserved in payloads and are not used as an inclusion filter.
 - One reserved control point stores release/model/schema identity, curation status, counts and `building`/`ready` state. It is excluded from every evidence query and from displayed coverage counts. The dashboard's total point count is therefore **expected evidence rows plus one**.
