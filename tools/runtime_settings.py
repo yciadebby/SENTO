@@ -15,7 +15,7 @@ def load_settings(path):
     except (OSError, ValueError):
         raise ValueError('Could not read private TOML settings. Check the file locally.') from None
     accepted = {key: value for key, value in settings.items()
-                if key.startswith(('SENTO_', 'QDRANT_', 'CHROMA_', 'OPENAI_'))}
+                if key.startswith(('SENTO_', 'QDRANT_', 'CHROMA_', 'OPENAI_', 'FIREWORKS_'))}
     if any(not isinstance(value, (str, int, float, bool)) for value in accepted.values()):
         raise ValueError('Provider settings must be root-level scalar TOML values.')
     os.environ.update({key: str(value) for key, value in accepted.items()})

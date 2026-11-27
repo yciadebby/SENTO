@@ -70,6 +70,46 @@ class OpenAIEmbeddingProvider:
             raise EmbeddingError("The hosted embedding service is unavailable.") from None
 
 
+class FireworksEmbeddingProvider(OpenAIEmbeddingProvider):
+    """Fireworks OpenAI-compatible embeddings with an independent credential."""
+    provider_name = "fireworks"
+
+    def __init__(self, *, api_key, base_url="https://api.fireworks.ai/inference/v1",
+                 model="accounts/fireworks/models/qwen3-embedding-0p6b", dimensions=1024, client=None):
+        if not api_key and client is None:
+            raise ValueError("FIREWORKS_API_KEY is required for Fireworks embeddings.")
+        self._model, self.dimensions = model, dimensions
+        self.client = client
+        self._client_lock = RLock()
+        self._api_key, self.base_url = api_key, base_url
+
+    def embed(self, texts):
+        if not texts:
+            return []
+        if any(not isinstance(text, str) or not text.strip() for text in texts):
+            raise EmbeddingError("Embedding inputs must be nonempty strings.")
+        try:
+            with self._client_lock:
+                if self.client is None:
+                    from openai import OpenAI
+                    self.client = OpenAI(api_key=self._api_key, base_url=self.base_url, timeout=45, max_retries=0)
+            response = self.client.embeddings.create(model=self.model_name, input=texts)
+            rows = response.data
+            if len(rows) != len(texts) or sorted(row.index for row in rows) != list(range(len(texts))):
+                raise EmbeddingError("Unexpected embedding count or indexes.")
+            vectors = []
+            for row in sorted(rows, key=lambda row: row.index):
+                vector = row.embedding
+                if len(vector) != self.dimensions or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in vector):
+                    raise EmbeddingError("Malformed embedding dimensions or numeric values.")
+                vectors.append([float(v) for v in vector])
+            return vectors
+        except EmbeddingError:
+            raise
+        except Exception:
+            raise EmbeddingError("The Fireworks embedding service is unavailable.") from None
+
+
 class OllamaEmbeddingProvider:
     """Call Ollama's local /api/embed endpoint without coupling Chroma to Ollama."""
 

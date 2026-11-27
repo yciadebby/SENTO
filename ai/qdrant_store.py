@@ -181,6 +181,10 @@ def publish_qdrant_release(rows, manifest, config, *, client=None, embedder=None
         QdrantVectorStore(embedder, config, client=client)
     except VectorStoreError:
         raise
-    except Exception:
-        raise VectorStoreError('Qdrant publication failed. Keep the active release unchanged and retry with a new candidate name.') from None
+    except Exception as exc:
+        status = getattr(getattr(exc, 'response', None), 'status_code', None)
+        # Provider errors are sanitized: report class/status only, never headers,
+        # request bodies or credentials that SDK exceptions may contain.
+        detail = f"{type(exc).__name__}" + (f" (HTTP {status})" if status else '')
+        raise VectorStoreError(f'Qdrant publication failed: {detail}. The active release was not switched.') from None
     return {'indexed': len(rows), 'collection': config.collection, 'status': 'ready_for_live_review'}
