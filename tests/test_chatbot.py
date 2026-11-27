@@ -81,7 +81,7 @@ def test_no_evidence_abstains_without_calling_generator(senators):
 
     response = bot.ask("What is the record?", "risa-hontiveros")
 
-    assert "could not find a reviewed source" in response["answer"]
+    assert "could not find a passage in the current project-curated notes" in response["answer"]
     assert response["validation"]["status"] == "INSUFFICIENT_EVIDENCE"
     assert response["citations"] == []
     assert generator.calls == []

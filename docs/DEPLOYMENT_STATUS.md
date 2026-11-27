@@ -1,6 +1,20 @@
 # Deployment status — 27 November 2026
 
-## Qdrant update (supersedes Chroma provisioning steps below)
+## Fireworks configuration repair
+
+The reported Streamlit settings used Fireworks/Qwen3 embeddings and the maintenance Qdrant key name. The previous runtime rejected that provider before making a request and did not read `FIREWORKS_API_KEY`. The adapter, Streamlit secret allowlist, separate credential routing, 4096-dimensional release manifest and maintenance TOML loader now support the selected Fireworks configuration. App Secrets must still use `SENTO_QDRANT_READ_ONLY_API_KEY` with the read-only app key. Controlled validation errors are logged without supplied values; `tools/check_rag.py --runtime-settings --config-only --secrets-file <private.toml>` validates an export offline.
+
+Focused verification: `.venv/Scripts/python.exe -m pytest -q tests/test_fireworks_deployment.py tests/test_cloud_deployment.py tests/test_qdrant_deployment.py tests/test_rag_factory.py --basetemp=test-results/fireworks-focused-v2 --tb=short` — **78 passed**. Coverage includes separate credentials and cache invalidation, malformed vectors, safe errors, a real in-memory Qdrant publication/retrieval roundtrip with fake Fireworks embeddings, subject/period isolation and release identity rejection. Two older test fixtures were aligned with the existing Markdown MIME requirement and project-curation query filter; production evidence checks were preserved.
+
+Live recovery subsequently completed using the existing ignored maintenance credentials, whose Qdrant publisher/manage role the owner confirmed. The original Fireworks r1 collection was `building` with 224 of 968 evidence rows. An r2 attempt created only its control point before a transient DNS failure. Both were preserved and remain inactive. All 968 Fireworks vectors were generated into an ignored local cache, validated, then published into `sento_demo_md_fireworks_qwen3_8b_4096_r3` / `demo-md-fireworks-qwen3-8b-r3`. Publication checked all IDs/payloads, vector/model/release metadata, ready state and total count (969 including control). The immutable package is in `data/releases/demo-md-fireworks-qwen3-8b-r3/`; the r2 package is retained for audit.
+
+The supplied generation key returned HTTP 401 at `https://api.openai.com/v1`. The owner identified it as a gateway key and provided `https://aiki-labs.up.railway.app/api/v1`; a live request with the configured model then succeeded. The screenshot question returned `SOURCE-GROUNDED AI SUMMARY`, `CITATIONS_VALIDATED`, five retrieved records and two citations through the actual pipeline. This is a smoke test of retrieval/generation/citation wiring, not independent verification of every generated claim or proof of complete source coverage. Embedding and generation calls were billed provider requests.
+
+The ignored local maintenance file now names r3 and the correct gateway URL; credentials were not printed or changed. The deployed Streamlit Secrets have not been edited, and code has not been pushed/deployed. To activate: deploy this revision, copy the updated runtime template, and enter the separate Qdrant app read-only key as `SENTO_QDRANT_READ_ONLY_API_KEY`. Do not copy the publisher key. Earlier verification totals below are historical.
+
+Final verification after recovery: `.venv/Scripts/python.exe -m pytest -q --basetemp=test-results/fireworks-complete --tb=short` — **190 passed**. Streamlit UI tests required local socket access outside the restricted sandbox. Obsolete test assertions were aligned with the existing curated-note messages, comparison shape, credential forwarding and Home button; UI tests now isolate private settings and allow ten seconds for startup. `git diff --check` passed. No production UI or evidence policy was relaxed to make tests pass.
+
+## Historical Qdrant update (superseded by the recovery above)
 
 The owner reported Chroma signup blocking and created Qdrant Cloud cluster `sento-demo`. Their screenshot shows a healthy free cluster, an active `sento-publisher` manage key and an active `sento-app` read key. They supplied the endpoint recorded in [QDRANT_SETUP.md](QDRANT_SETUP.md). No keys were shared or inspected.
 
@@ -10,7 +24,7 @@ The original Chroma plan remains archived below. The active Chat release now use
 
 ## Hosted Chat runtime and cost-control update — 27 November 2026
 
-- The Streamlit Chat path now requires `qdrant_cloud`, OpenAI embeddings and OpenAI Responses generation. It reads configuration directly from `st.secrets`; it does not use `.env`, local TOML files, or process-environment fallback.
+- The Streamlit Chat path now requires `qdrant_cloud` and OpenAI Responses generation; embeddings can use Fireworks Qwen3 or OpenAI. It reads configuration directly from `st.secrets`; it does not use `.env`, local TOML files, or process-environment fallback.
 - The runtime accepts only the separately named `SENTO_QDRANT_READ_ONLY_API_KEY`. The Qdrant publisher/manage key remains outside the app. The read-only key's actual role still needs confirmation in the Qdrant dashboard.
 - The configured generation target remains `gpt-6-luna` with low reasoning. The owner reports paid OpenAI usage, but no API key or Streamlit Secrets were available in this workspace, so account/model access could not be called and the model was not changed.
 - Exact repeat responses are cached per session for ten minutes (up to 32 entries); eight submissions per session/minute and thirty cloud RAG requests per running app process/minute are enforced. The process limiter resets on restart and does not replace OpenAI project spending controls.

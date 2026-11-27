@@ -145,6 +145,7 @@ def test_openai_client_uses_bounded_timeout_and_no_retries(monkeypatch):
 
     assert isinstance(provider._client(), Client)
     assert captured == {
+        "api_key": "test-key",
         "timeout": 45.0,
         "max_retries": 0,
         "base_url": "https://aiki-labs.up.railway.app/api/v1",

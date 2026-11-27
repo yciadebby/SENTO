@@ -25,13 +25,9 @@ class EmbeddingProvider(Protocol):
     def embed(self, texts: list[str]) -> list[list[float]]: ...
 
 
-class OpenAIEmbeddingProvider:
+class HostedEmbeddingProvider:
     """Explicit hosted embeddings, with bounded requests and strict response validation."""
-    provider_name = "openai"
-
-    def __init__(self, *, api_key, base_url, model="text-embedding-3-small", dimensions=1536, client=None):
-        if model != "text-embedding-3-small" or dimensions != 1536:
-            raise ValueError("Hosted embeddings require text-embedding-3-small / 1536.")
+    def __init__(self, *, api_key, base_url, model, dimensions, client=None):
         self._model, self.dimensions = model, dimensions
         self.client = client
         self._client_lock = RLock()
@@ -68,6 +64,28 @@ class OpenAIEmbeddingProvider:
             raise
         except Exception:
             raise EmbeddingError("The hosted embedding service is unavailable.") from None
+
+
+class OpenAIEmbeddingProvider(HostedEmbeddingProvider):
+    provider_name = "openai"
+
+    def __init__(self, *, api_key, base_url, model="text-embedding-3-small", dimensions=1536, client=None):
+        if model != "text-embedding-3-small" or dimensions != 1536:
+            raise ValueError("Hosted embeddings require text-embedding-3-small / 1536.")
+        super().__init__(api_key=api_key, base_url=base_url, model=model, dimensions=dimensions, client=client)
+
+
+class FireworksEmbeddingProvider(HostedEmbeddingProvider):
+    """Qwen3 embeddings using the existing OpenAI-compatible client, with a separate key."""
+    provider_name = "fireworks"
+    MODEL = "accounts/fireworks/models/qwen3-embedding-8b"
+    DIMENSIONS = 4096
+    BASE_URL = "https://api.fireworks.ai/inference/v1"
+
+    def __init__(self, *, api_key, base_url=BASE_URL, model=MODEL, dimensions=DIMENSIONS, client=None):
+        if model != self.MODEL or dimensions != self.DIMENSIONS:
+            raise ValueError("Fireworks embeddings require accounts/fireworks/models/qwen3-embedding-8b / 4096.")
+        super().__init__(api_key=api_key, base_url=base_url, model=model, dimensions=dimensions, client=client)
 
 
 class OllamaEmbeddingProvider:

@@ -140,7 +140,7 @@ def test_similarity_cutoff_and_untrusted_result_checks(published, cloud, embedde
     def query_points(**kwargs):
         assert kwargs['score_threshold'] == pytest.approx(.35)
         constraints = {c.key: c.match.value for c in kwargs['query_filter'].must}
-        assert constraints == {'record_kind': 'evidence', 'senator_id': 'alpha', 'verification_status': 'verified',
+        assert constraints == {'record_kind': 'evidence', 'senator_id': 'alpha', 'curation_status': 'project_curated',
                                'release_id': cloud.release, 'congress_id': '20'}
         return NS(points=[NS(id=point_id(payload['index_id']), payload=p, score=s) for p, s in
                           [(payload, .8), (payload, .34), (payload, float('nan')), (wrong, .9),
